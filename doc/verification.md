@@ -53,3 +53,5 @@
 - 对齐七个安装包/应用 ZIP、架构与代码签名完整性检查、CI 安装/启动烟测、BUILD-METADATA 和 SHA256SUMS。新增的签名更新包、签名与 latest.json 也纳入总校验文件；静态清单复用 Windows/Linux 安装包，不重复分发同一内容。
 - 更新清单 Python 测试增至 4 项，新增覆盖全部 16 个发布附件的收集与校验文件完整性；工作流 YAML 语法和工程版本一致性检查通过。远程构建与公开结果在完成后补记。
 - 两仓库 AGENTS.md 已写入配套发布约定，Antigravity 本次仅维护文档，不重新打包或覆盖旧附件。
+- 首轮远程 Windows 测试在测试程序入口以 `0xc0000139` 退出，没有进入用例。排查到 [Tauri 上游的模拟应用测试清单问题](https://github.com/tauri-apps/tauri/issues/13419)，为 MSVC 的所有链接目标显式嵌入与 Tauri 默认一致的 Common Controls v6 清单，避免只有应用 exe 获得清单而 lib 单元测试缺失；不申请额外权限。签名测试内容另通过 `.gitattributes` 保持原始字节，不随 Windows 换行设置改变。
+- 首轮打包已取消，修复后将从同一新提交重新运行整批验证与打包，不混合旧产物。
