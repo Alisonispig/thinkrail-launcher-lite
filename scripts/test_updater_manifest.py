@@ -1,4 +1,5 @@
 import json
+import os
 import hashlib
 from pathlib import Path
 import tempfile
@@ -14,7 +15,7 @@ class UpdateManifestTests(unittest.TestCase):
         from updater_manifest import ASSET_NAMES, REPOSITORY
         project = Path(__file__).resolve().parents[1]
         payload = (project / "src-tauri/test-fixtures/update-payload.txt").read_bytes()
-        signature = (project / "src-tauri/test-fixtures/update-payload.sig").read_text().strip()
+        signature = (project / "src-tauri/test-fixtures/update-payload.sig").read_text(encoding="utf-8").strip()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "release-assets"
             root.mkdir()
@@ -33,9 +34,9 @@ class UpdateManifestTests(unittest.TestCase):
                 (root / f"{platform}.json").write_text("{}")
                 platforms[platform] = {"url": f"https://github.com/{REPOSITORY}/releases/download/v2.0.0/{name}", "signature": signature}
             (root / "latest.json").write_text(json.dumps({"version": "2.0.0", "platforms": platforms}))
-            result = subprocess.run([sys.executable, str(project / "scripts/finalize_release.py"), "--version", "2.0.0", "--commit", "test-commit"], cwd=root.parent, capture_output=True, text=True)
+            result = subprocess.run([sys.executable, str(project / "scripts/finalize_release.py"), "--version", "2.0.0", "--commit", "test-commit"], cwd=root.parent, capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONUTF8": "1"})
             self.assertEqual(result.returncode, 0, result.stderr)
-            checksums = (root / "SHA256SUMS.txt").read_text().splitlines()
+            checksums = (root / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(checksums), 15)
             self.assertEqual(len(list(root.iterdir())), 16)
             for line in checksums:
@@ -54,7 +55,7 @@ class UpdateManifestTests(unittest.TestCase):
                 source.with_name(source.name + ".sig").write_text("example-signature")
                 collect(bundle, output, platform, "0.1.1")
             merge(output, "0.1.1", "更新说明")
-            manifest = json.loads((output / "latest.json").read_text())
+            manifest = json.loads((output / "latest.json").read_text(encoding="utf-8"))
             self.assertEqual(set(manifest["platforms"]), set(PLATFORMS))
             self.assertEqual(manifest["notes"], "更新说明")
             self.assertIn("/releases/download/v0.1.1/", manifest["platforms"]["darwin-aarch64"]["url"])
