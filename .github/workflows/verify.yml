@@ -29,5 +29,6 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: python -m unittest discover -s scripts -p 'test_*.py'
       - name: 编译桌面程序（不生成发布包）
         run: npm run tauri build -- --debug --no-bundle

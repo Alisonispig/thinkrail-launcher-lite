@@ -8,6 +8,8 @@ fn main() {
             "save_config",
             "set_window_theme",
             "set_close_after_launch",
+            "check_update",
+            "install_update",
         ]),
     ))
     .expect("构建 Tauri 权限清单失败");

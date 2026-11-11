@@ -1,6 +1,6 @@
 [package]
 name = "thinkrail-launcher-lite"
-version = "0.1.0"
+version = "1.0.2"
 description = "轻量级 ThinkRail 桌面代理启动器，无需 TUN，不修改系统代理"
 license = "MIT"
 authors = ["ThinkRail Launcher Lite contributors"]
@@ -29,6 +29,10 @@ sha2 = "0.10.9"
 
 serde_json = "1"
 tempfile = "3"
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "zip"] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -12,6 +12,8 @@
     "allow-load-config",
     "allow-save-config",
     "allow-set-window-theme",
-    "allow-set-close-after-launch"
+    "allow-set-close-after-launch",
+    "allow-check-update",
+    "allow-install-update"
   ]
 }

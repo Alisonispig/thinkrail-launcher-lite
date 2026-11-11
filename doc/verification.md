@@ -35,3 +35,21 @@
 - 补齐第三方声明生成脚本，本机 macOS arm64 目标生成成功。构建产物、依赖目录、环境文件和生成的声明文件不进入 Git。
 - 本机平台验证：`npm run lint`、`npm run build`、`cargo fmt`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过；12 项 Rust 测试通过。Windows/Linux 结果以远程 CI 为准，编译验证不等同于实机交互验收。
 - 真实客户端对话验证：本次未执行，未启动或重启 ThinkRail。
+
+## 应用内更新验证（0.1.1，2026-11-11）
+
+- 本机平台：macOS Apple Silicon。`npm run lint`、`npm run build`、`cargo fmt`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过；Rust 测试 14 项通过。新增测试覆盖下载地址限制、正确签名包、篡改包、清单版本伪造、降级和预发布版本拒绝。签名测试使用一次性测试密钥，私钥未保留。
+- Python 更新清单测试 3 项通过，覆盖四平台合并、缺包、缺签名及非法版本。两份工作流通过 YAML 语法解析，发布输入的工程版本一致性检查在本地通过；远程构建尚未运行。
+- 本地 `npm run tauri build -- --debug --bundles app` 在提供维护者密钥后成功，生成 0.1.1 应用、`.app.tar.gz` 和 `.sig`。确认签名可信注释绑定 0.1.1，内置公钥与本地签名公钥一致；实际产物尚未走一轮升级安装。
+- 原生界面验证：打开本地新版应用，设置页显示更新入口；点击检查后显示进行中状态，并锁定冲突操作。当前直连 GitHub 发生网络超时，界面正确提示切换连接后重试，按钮恢复可用。未下载或安装真实更新，未替换系统应用目录中的应用。
+- 平台限制：Windows/Linux 及 macOS Intel 尚未实机验证。macOS 原生下载、写入替换和重启闭环须在正式签名 Release 可用后验收。本次更新包签名不代表 Apple Developer ID 签名或公证验收。
+- 真实客户端对话验证：本次未执行；未启动、退出或重启 ThinkRail。
+- 签名私钥保存在仓库外，权限 0600，已配置到本仓库的 GitHub Actions Secret。开源仓库只包含公钥和测试签名。
+- 未启动开发服务器；本次功能改动尚未推送，未创建或公开发布 Release。
+
+## 对齐 Antigravity 1.0.2 发布准备（2026-11-11）
+
+- 用户明确要求按 Antigravity 的版本与发布流程执行，并要求以后两个项目配套发布。ThinkRail 版本统一为 1.0.2；此前本地 0.1.1 未公开发布。Antigravity 已公开的 1.0.2 保持不变。
+- 对齐七个安装包/应用 ZIP、架构与代码签名完整性检查、CI 安装/启动烟测、BUILD-METADATA 和 SHA256SUMS。新增的签名更新包、签名与 latest.json 也纳入总校验文件；静态清单复用 Windows/Linux 安装包，不重复分发同一内容。
+- 更新清单 Python 测试增至 4 项，新增覆盖全部 16 个发布附件的收集与校验文件完整性；工作流 YAML 语法和工程版本一致性检查通过。远程构建与公开结果在完成后补记。
+- 两仓库 AGENTS.md 已写入配套发布约定，Antigravity 本次仅维护文档，不重新打包或覆盖旧附件。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { version as appVersion } from '../package.json';
 
 const language = ref<'zh' | 'en'>(navigator.language.startsWith('zh') ? 'zh' : 'en');
@@ -10,6 +10,60 @@ const path = ref(navigator.userAgent.includes('Mac') ? '/Applications/ThinkRail.
 const host = ref('127.0.0.1');
 const port = ref(17891);
 const busy = ref(false);
+const updateState = ref<'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'installing' | 'failed'>('idle');
+const updateWorking = computed(() => ['checking', 'downloading', 'installing'].includes(updateState.value));
+const useUpdateProxy = ref(false);
+const availableUpdate = ref<{version: string; notes: string} | null>(null);
+const updateError = ref('');
+const downloadedBytes = ref(0);
+const downloadTotal = ref<number | null>(null);
+const updateProgress = computed(() => downloadTotal.value ? Math.min(100, Math.round(downloadedBytes.value / downloadTotal.value * 100)) : null);
+const updateMessage = computed(() => {
+ switch (updateState.value) {
+  case 'checking': return t('正在检查 GitHub 更新…', 'Checking GitHub for updates…');
+  case 'available': return t(`发现新版本 v${availableUpdate.value?.version}`, `Version ${availableUpdate.value?.version} is available`);
+  case 'current': return t('当前已是最新正式版本。', 'You have the latest stable version.');
+  case 'downloading': return t(`正在下载更新：${updateProgress.value === null ? (downloadedBytes.value / 1048576).toFixed(1) + ' MB' : updateProgress.value + '%'}`, `Downloading update: ${updateProgress.value === null ? (downloadedBytes.value / 1048576).toFixed(1) + ' MB' : updateProgress.value + '%'}`);
+  case 'installing': return t('正在安装，即将重启启动器…', 'Installing. The launcher will restart shortly…');
+  case 'failed': return updateError.value;
+  default: return t('点击检查更新，发现新版后可直接下载安装。', 'Check for updates, then download and install in the app.');
+ }
+});
+async function checkUpdate() {
+ if (!desktop || busy.value || updateWorking.value) return;
+ availableUpdate.value = null;
+ updateState.value = 'checking';
+ try {
+  availableUpdate.value = await invoke('check_update', {proxy: useUpdateProxy.value ? {host: host.value, port: port.value} : null});
+  updateState.value = availableUpdate.value ? 'available' : 'current';
+ } catch (error: unknown) { showUpdateError(error); }
+}
+function showUpdateError(error: unknown) {
+ const messages: Record<string, [string, string]> = {
+  UPDATE_UNAVAILABLE: ['暂无可用更新清单，或 GitHub 暂无法访问。请稍后重试。', 'No update manifest is available, or GitHub is unavailable. Retry later.'],
+  UPDATE_PLATFORM_MISSING: ['新版尚未提供当前系统的更新包。请稍后重试。', 'The new release has no update for this platform yet. Retry later.'],
+  UPDATE_NETWORK_FAILED: ['更新连接失败，请切换直连或启动页代理后重试。', 'Connection failed. Try direct access or the proxy from the Launch page.'],
+  UPDATE_SIGNATURE_FAILED: ['更新包签名校验失败，已阻止安装。请联系维护者。', 'Update signature verification failed. Installation was blocked. Contact the maintainer.'],
+  UPDATE_INVALID: ['更新包地址无效，已阻止下载。', 'The update URL is invalid. Download was blocked.'],
+  INVALID_PROXY: ['启动页的代理主机或端口无效，请修改后重试。', 'The proxy host or port on the Launch page is invalid.'],
+  BUSY: ['其他操作正在进行，请稍后重试。', 'Another operation is in progress. Retry shortly.'],
+ };
+ updateError.value = t(...(messages[errorCode(error)] ?? ['更新失败，请检查网络及应用目录的写入权限后重试。', 'Update failed. Check the connection and write access to the app directory, then retry.']));
+ updateState.value = 'failed';
+}
+async function installUpdate() {
+ if (!availableUpdate.value || updateWorking.value || busy.value) return;
+ updateState.value = 'downloading';
+ downloadedBytes.value = 0; downloadTotal.value = null;
+ const progress = new Channel<{event: 'downloading'; downloaded: number; total: number | null} | {event: 'installing'}>();
+ progress.onmessage = event => {
+  if (event.event === 'downloading') {
+   downloadedBytes.value = event.downloaded; downloadTotal.value = event.total;
+  } else { updateState.value = 'installing'; }
+ };
+ try { await invoke('install_update', {progress}); }
+ catch (error: unknown) { showUpdateError(error); }
+}
 const closeAfterLaunch = ref(true);
 const changingCloseAfterLaunch = ref(false);
 async function toggleCloseAfterLaunch(event: Event) {
@@ -32,7 +86,7 @@ const helpTab = ref('steps');
 const historyPage = ref(0);
 const pageCount = computed(() => Math.max(1, Math.ceil(logs.value.length / 3)));
 const visibleLogs = computed(() => logs.value.slice(historyPage.value * 3, historyPage.value * 3 + 3));
-const canValidate = computed(() => desktop && !loadingConfig.value && !busy.value && !!path.value);
+const canValidate = computed(() => desktop && !loadingConfig.value && !busy.value && !updateWorking.value && !!path.value);
 const desktop = isTauri();
 const loadingConfig = ref(desktop);
 const writableConfig = ref(false);
@@ -98,6 +152,10 @@ onMounted(async () => {
  }
 });
 watch([path, host, port, language, theme], () => { void saveSettings(); }, {flush: 'sync'});
+watch([useUpdateProxy, host, port], () => {
+ if (updateWorking.value) return;
+ availableUpdate.value = null; updateState.value = 'idle';
+});
 async function syncWindowTheme() {
  if (!desktop || loadingConfig.value) return;
  try { await invoke('set_window_theme', {theme: theme.value}); }
@@ -121,7 +179,7 @@ const errors: Record<string, [string, string]> = {
  BUSY: ['操作正在进行，请稍候。', 'An operation is in progress. Please wait.'],
  PROBE_FAILED: ['无法初始化网络检测。', 'Cannot initialize the network check.'],
 };
-const canRun = computed(() => desktop && !loadingConfig.value && !busy.value && !!host.value && Number.isInteger(port.value) && port.value > 0 && port.value <= 65535);
+const canRun = computed(() => desktop && !loadingConfig.value && !busy.value && !updateWorking.value && !!host.value && Number.isInteger(port.value) && port.value > 0 && port.value <= 65535);
 function record(text: string) {
  message.value = text;
  logs.value.unshift({time: new Date().toLocaleTimeString(), text});
@@ -166,7 +224,7 @@ async function run(action: 'validate' | 'probe' | 'launch') {
  <div class="app" :data-theme="theme">
   <header><img src="./assets/app-icon.png" alt="" /><strong>ThinkRail <span>Launcher Lite</span></strong></header>
   <nav :aria-label="t('导航', 'Navigation')">
-   <button v-for="tab in ['home', 'history', 'settings', 'help']" :key="tab" :class="{selected: active === tab}" @click="active = tab">{{ tab === 'home' ? t('启动', 'Launch') : tab === 'history' ? t('记录', 'History') : tab === 'settings' ? t('设置', 'Settings') : t('帮助', 'Help') }}</button>
+   <button v-for="tab in ['home', 'history', 'settings', 'help']" :key="tab" :disabled="updateWorking" :class="{selected: active === tab}" @click="active = tab">{{ tab === 'home' ? t('启动', 'Launch') : tab === 'history' ? t('记录', 'History') : tab === 'settings' ? t('设置', 'Settings') : t('帮助', 'Help') }}</button>
   </nav>
   <main>
    <div v-if="active === 'home'" class="home page">
@@ -194,8 +252,17 @@ async function run(action: 'validate' | 'probe' | 'launch') {
    </div>
    <div v-else-if="active === 'settings'" class="page settings">
     <h1>{{ t('设置', 'Settings') }}</h1>
-    <section class="card preferences"><div><label for="lang">{{ t('语言', 'Language') }}</label><select id="lang" v-model="language" :disabled="loadingConfig"><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label for="theme">{{ t('外观', 'Appearance') }}</label><select id="theme" v-model="theme" :disabled="loadingConfig"><option value="system">{{ t('跟随系统', 'System') }}</option><option value="light">{{ t('浅色', 'Light') }}</option><option value="dark">{{ t('深色', 'Dark') }}</option></select></div></section>
-    <section class="card window-card"><label class="switch-row"><span>{{ t('启动后关闭本应用窗口', 'Close launcher window after launch') }}</span><input type="checkbox" :checked="closeAfterLaunch" :disabled="loadingConfig || changingCloseAfterLaunch || !writableConfig" @change="toggleCloseAfterLaunch" /></label><p>{{ t('ThinkRail 启动成功后自动收起此窗口，失败时保持打开。', 'Hide after ThinkRail starts successfully. Keep open on failure.') }}</p><p>{{ t('从菜单栏或系统托盘可重新打开，选择“退出”才会结束启动器。', 'Reopen from the menu bar or system tray. Choose Quit to exit.') }}</p></section>
+    <section class="card preferences"><div><label for="lang">{{ t('语言', 'Language') }}</label><select id="lang" v-model="language" :disabled="loadingConfig || updateWorking"><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label for="theme">{{ t('外观', 'Appearance') }}</label><select id="theme" v-model="theme" :disabled="loadingConfig || updateWorking"><option value="system">{{ t('跟随系统', 'System') }}</option><option value="light">{{ t('浅色', 'Light') }}</option><option value="dark">{{ t('深色', 'Dark') }}</option></select></div></section>
+    <section class="card window-card"><label class="switch-row"><span>{{ t('启动后关闭本应用窗口', 'Close launcher window after launch') }}</span><input type="checkbox" :checked="closeAfterLaunch" :disabled="loadingConfig || changingCloseAfterLaunch || !writableConfig || updateWorking" @change="toggleCloseAfterLaunch" /></label><p>{{ t('ThinkRail 启动成功后自动收起此窗口，失败时保持打开。', 'Hide after ThinkRail starts successfully. Keep open on failure.') }}</p><p>{{ t('从菜单栏或系统托盘可重新打开，选择“退出”才会结束启动器。', 'Reopen from the menu bar or system tray. Choose Quit to exit.') }}</p></section>
+    <section class="card update-card">
+     <div class="card-heading"><h2>{{ t('启动器更新', 'Launcher updates') }}</h2><span>v{{ appVersion }}</span></div>
+     <label class="switch-row"><span>{{ t('使用启动页配置的代理', 'Use the proxy from the Launch page') }}</span><input v-model="useUpdateProxy" type="checkbox" :disabled="updateWorking" /></label>
+     <p role="status" :class="{'update-error': updateState === 'failed'}">{{ updateMessage }}</p>
+     <progress v-if="updateState === 'downloading'" :value="updateProgress ?? undefined" max="100" :aria-label="t('更新下载进度', 'Update download progress')"></progress>
+     <p v-if="availableUpdate?.notes" class="release-notes">{{ availableUpdate.notes }}</p>
+     <div class="update-actions"><button class="secondary" :disabled="!desktop || loadingConfig || busy || updateWorking" @click="checkUpdate">{{ updateState === 'checking' ? t('检查中…', 'Checking…') : t('检查更新', 'Check for updates') }}</button><button v-if="availableUpdate" class="primary" :disabled="busy || updateWorking" @click="installUpdate">{{ t('下载安装并重启', 'Install & restart') }}</button></div>
+     <p class="hint">{{ t('更新包校验通过后自动安装并重启启动器；ThinkRail 保持运行。安装期间请勿退出启动器。', 'Verified updates install automatically and restart the launcher. ThinkRail keeps running. Keep the launcher open during installation.') }}</p>
+    </section>
    </div>
    <div v-else class="page help">
     <div class="page-heading"><h1>{{ t('帮助', 'Help') }}</h1><div class="segments"><button :class="{chosen: helpTab === 'steps'}" @click="helpTab = 'steps'">{{ t('怎么用', 'Getting started') }}</button><button :class="{chosen: helpTab === 'faq'}" @click="helpTab = 'faq'">{{ t('常见问题', 'Troubleshooting') }}</button></div></div>
@@ -218,6 +285,10 @@ async function run(action: 'validate' | 'probe' | 'launch') {
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;font-size:13px}*{box-sizing:border-box}html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.4}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.app{--bg:#fff;--panel:#fff;--text:#273344;--muted:#7b8695;--border:#e6ebf2;--accent:#527bec;--soft:#eff4ff;height:100%;display:grid;grid-template-rows:40px 38px minmax(0,1fr) 20px;gap:14px;background:var(--bg);color:var(--text);padding:20px 32px 12px}.app[data-theme=dark]{--bg:#1b201d;--panel:#232a25;--text:#e7ece6;--muted:#9ca89f;--border:#343e36;--accent:#a0cbae;--soft:#29372d;color-scheme:dark}@media(prefers-color-scheme:dark){.app[data-theme=system]{--bg:#1b201d;--panel:#232a25;--text:#e7ece6;--muted:#9ca89f;--border:#343e36;--accent:#a0cbae;--soft:#29372d;color-scheme:dark}}header{display:flex;align-items:center;gap:10px}header img{width:36px;height:36px}header strong{font-size:15px;letter-spacing:-.3px}header strong span{font-weight:400;color:var(--muted);margin-left:3px}nav{display:flex;gap:24px;border-bottom:1px solid var(--border)}nav button{background:none;border:0;border-bottom:2px solid transparent;padding:0 1px 9px;color:var(--muted)}nav button.selected{color:var(--text);border-bottom-color:var(--accent)}main{width:100%;max-width:760px;min-height:0;margin:0 auto}.page{height:100%;min-height:0}h1{font-size:20px;font-weight:600;letter-spacing:-.4px;margin:0 0 16px}h2{font-size:13px;font-weight:600;margin:0}p{line-height:1.6;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}.home{display:flex;flex-direction:column}.home h1{margin-bottom:12px}fieldset{border:0;padding:0;margin:0;display:grid;gap:12px}.card{border:1px solid var(--border);background:var(--panel);border-radius:9px;padding:16px 18px}.card-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.card-heading span{font-size:11px;color:var(--muted)}.input-row{display:flex;gap:10px}.input-row input{flex:1}input,select{min-width:0;width:100%;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;height:36px;padding:0 10px}input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.secondary{color:var(--text);border:1px solid var(--border);background:var(--panel);border-radius:6px;height:36px;padding:0 16px;white-space:nowrap}.proxy-fields{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:10px;align-items:end}.hint{font-size:11px;margin-top:8px}.launch-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:14px}.launch-row span{font-size:11px;color:var(--muted)}.primary{border:0;background:#527bec;color:#fff;padding:0 28px;height:40px;border-radius:7px;font-weight:500}.status{display:flex;align-items:center;gap:10px;min-height:58px;margin-top:auto;padding-top:8px}.status p{font-size:12px;margin:0}.status.success p{color:var(--accent)}.status.error p{color:#bf6655}.spinner{width:12px;height:12px;flex-shrink:0;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}footer{display:flex;align-items:end;justify-content:space-between;gap:12px;color:var(--muted);font-size:10px;border-top:1px solid var(--border);padding-top:7px}.page-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.page-heading h1{margin:0}.page-heading>span{font-size:11px;color:var(--muted)}.history{display:flex;flex-direction:column}.empty{margin:auto;color:var(--muted)}.log-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}.log-list li{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 16px}.log-list time{font-size:10px;color:var(--muted)}.log-list p{color:var(--text);font-size:12px;margin-top:5px}.pagination{display:flex;justify-content:center;align-items:center;gap:18px;margin-top:auto;padding-top:12px}.pagination span{font-size:11px;color:var(--muted)}.pagination button{height:30px;font-size:11px}.preferences{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:14px}.settings .card>p{font-size:12px;margin-top:12px}.segments{display:flex;padding:3px;background:var(--border);border-radius:7px;gap:3px}.segments button{background:transparent;color:var(--muted);border:0;border-radius:5px;font-size:11px;padding:6px 10px}.segments .chosen{background:var(--panel);color:var(--text)}.instructions{display:grid;gap:22px;padding:22px}.instructions>div{display:flex;gap:14px}.instructions b{font-size:11px;flex-shrink:0;width:24px;height:24px;display:grid;place-items:center;background:var(--soft);color:var(--accent);border-radius:50%;font-weight:500}.help p{font-size:12px;margin-top:6px}.faq{display:grid;gap:17px;padding:20px}.help h2{line-height:1.5}@media(max-height:660px){.app{padding-top:14px;gap:10px;grid-template-rows:36px 34px minmax(0,1fr) 20px}.card{padding:12px 16px}.home h1{font-size:18px;margin-bottom:10px}.card-heading{margin-bottom:8px}.status{min-height:52px}.instructions{gap:18px;padding:18px}.faq{gap:13px;padding:17px}}
 .version{margin-left:auto;white-space:nowrap}.save-feedback{display:flex;align-items:center;gap:8px}.save-error{color:#bf6655}.save-feedback button{border:0;background:transparent;color:inherit;text-decoration:underline;padding:0;font-size:10px}
+</style>
+
+<style>
+.settings{overflow-y:auto;padding-bottom:8px}.update-card{margin-top:14px}.update-actions{display:flex;gap:10px;margin-top:12px;align-items:center}.update-card progress{width:100%;height:8px;margin-top:12px;accent-color:var(--accent)}.release-notes{white-space:pre-wrap;max-height:100px;overflow-y:auto}.update-card .update-error{color:#bf6655}
 </style>
 
 <style>

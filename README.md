@@ -4,6 +4,21 @@
 
 本项目基于 [Antigravity Launcher Lite](https://github.com/Alisonispig/antigravity-launcher-lite) 派生，以 MIT 许可证开源并保留上游版权声明。
 
+## 下载
+
+版本：**1.0.2**，与 Antigravity Launcher Lite 对齐。[GitHub Releases](https://github.com/Alisonispig/thinkrail-launcher-lite/releases/latest) 提供安装包和 SHA-256 校验文件。
+
+| 平台 | 首次安装文件 |
+| --- | --- |
+| macOS · Apple Silicon | `macos-arm64.dmg` / `macos-arm64.app.zip` |
+| macOS · Intel | `macos-x64.dmg` / `macos-x64.app.zip` |
+| Windows · x64 | `windows-x64-setup.exe` |
+| Linux · x86_64 | `linux-x64.deb` / `linux-x64.AppImage` |
+
+文件名带有 `ThinkRail-Launcher-Lite_1.0.2_` 前缀。首次安装后，可在「设置 → 启动器更新」内下载安装新版本；`.app.tar.gz`、`.sig` 和 `latest.json` 用于应用内更新。macOS 为 adhoc 签名，未做 Developer ID 签名或公证；Windows 未做 Authenticode 签名。平台和真实客户端验证范围见发布说明。
+
+今后两个项目按同一批次维护和发布，详见 [配套发布约定](doc/release-policy.md)。
+
 ## 使用
 
 1. 打开自己的代理软件，确认 HTTP 或混合端口可用，无需开启 TUN。
@@ -22,6 +37,7 @@
 - 启动前识别已有实例，不自动退出用户客户端。成功启动后默认收起至菜单栏，退出启动器不会终止 ThinkRail。
 - 不内置代理内核或节点；目前仅支持无需认证的 HTTP / 混合端口，不支持 SOCKS-only 或 PAC。
 - 首版不包含客户端更新后自动恢复代理，更新重启后请正常退出并再次通过本启动器打开。
+- 启动器自身可在「设置 → 启动器更新」检查 GitHub 正式版本；点击「下载安装并重启」即可在应用内完成升级，保留配置与正在运行的 ThinkRail。支持直连或显式使用启动页代理，更新包必须通过签名与版本绑定校验。
 
 配置目录：`~/Library/Application Support/io.github.thinkrail-launcher-lite/config.json`。
 
@@ -36,10 +52,10 @@ npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run tauri build -- --debug --bundles app
+npm run tauri build -- --debug --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
 ```
 
-本机调试构建产物：`src-tauri/target/debug/bundle/macos/ThinkRail Launcher Lite.app`。正式构建使用 `npm run tauri build -- --bundles app`。不需要启动开发服务器。
+本机调试构建产物：`src-tauri/target/debug/bundle/macos/ThinkRail Launcher Lite.app`。上述调试命令关闭更新包生成，不需要签名私钥；正式签名更新包与 GitHub 草稿流程见 [更新维护说明](doc/updater.md)。不需要启动开发服务器。
 
 ## 来源与验证范围
 

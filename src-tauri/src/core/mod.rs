@@ -1,6 +1,7 @@
 pub mod config;
 pub mod launch;
 pub mod proxy;
+pub mod update;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

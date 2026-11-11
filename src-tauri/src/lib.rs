@@ -7,6 +7,26 @@ use tokio::sync::Mutex;
 #[derive(Default)]
 struct Operation(Mutex<()>);
 #[tauri::command]
+async fn check_update(
+    app: tauri::AppHandle,
+    proxy: Option<ProxyInput>,
+    state: tauri::State<'_, Operation>,
+    pending: tauri::State<'_, core::update::PendingUpdate>,
+) -> Result<Option<core::update::UpdateInfo>> {
+    let _guard = state.0.try_lock().map_err(|_| error("BUSY", "input"))?;
+    core::update::check(&app, &pending, proxy).await
+}
+#[tauri::command]
+async fn install_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Operation>,
+    pending: tauri::State<'_, core::update::PendingUpdate>,
+    progress: tauri::ipc::Channel<core::update::Progress>,
+) -> Result<()> {
+    let _guard = state.0.try_lock().map_err(|_| error("BUSY", "input"))?;
+    core::update::install(app, &pending, progress).await
+}
+#[tauri::command]
 fn validate_app(path: String) -> Result<platform::AppCandidate> {
     platform::validate(&path)
 }
@@ -104,7 +124,9 @@ fn set_window_theme(app: tauri::AppHandle, theme: core::config::Theme) -> Result
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Operation::default())
+        .manage(core::update::PendingUpdate::default())
         .manage(desktop::CloseAfterLaunch::default())
         .manage(core::config::ConfigStore::default())
         .setup(|app| {
@@ -119,7 +141,9 @@ pub fn run() {
             load_config,
             save_config,
             set_window_theme,
-            set_close_after_launch
+            set_close_after_launch,
+            check_update,
+            install_update
         ])
         .build(tauri::generate_context!())
         .expect("运行启动器失败")

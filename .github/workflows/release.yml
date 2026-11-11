@@ -1,0 +1,124 @@
+name: 打包发布（含签名更新包）
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 与工程版本一致的正式版本（不带 v）
+        required: true
+        default: '1.0.2'
+permissions:
+  contents: read
+concurrency:
+  group: updater-release-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  package:
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            package_platform: macos-arm64
+            platform: darwin-aarch64
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - os: macos-15-intel
+            package_platform: macos-x64
+            platform: darwin-x86_64
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - os: windows-2022
+            package_platform: windows-x64
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+          - os: ubuntu-22.04
+            package_platform: linux-x64
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RUST_TARGET: ${{ matrix.target }}
+      BUNDLE_FORMATS: ${{ matrix.bundles }}
+      UPDATE_PLATFORM: ${{ matrix.platform }}
+      RELEASE_PLATFORM: ${{ matrix.package_platform }}
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+      - name: 安装 Linux 打包依赖
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 xvfb dbus-x11
+      - name: 安装固定 Rust 工具链
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --target "$RUST_TARGET"
+      - run: npm ci
+      - name: 检查版本与发布说明
+        run: |
+          python -c 'import json,os,re; from pathlib import Path; from scripts.updater_manifest import validate_version; v=os.environ["RELEASE_VERSION"]; validate_version(v); assert json.loads(Path("package.json").read_text())["version"] == json.loads(Path("src-tauri/tauri.conf.json").read_text())["version"] == re.search(r"(?m)^version = \"([^\"]+)\"", Path("src-tauri/Cargo.toml").read_text())[1] == v; assert Path("doc/releases/"+v+".md").is_file()'
+      - run: npm run lint
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --target "$RUST_TARGET" -- -D warnings
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target "$RUST_TARGET"
+      - run: python -m unittest discover -s scripts -p 'test_*.py'
+      - run: python scripts/third_party_notices.py --target "$RUST_TARGET"
+      - name: 构建并签名更新包
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          npm run tauri -- build --target "$RUST_TARGET" --bundles "$BUNDLE_FORMATS"
+      - name: 检查架构与收集安装包
+        run: python scripts/collect_release.py --platform "$RELEASE_PLATFORM" --target "$RUST_TARGET" --version "$RELEASE_VERSION"
+      - name: 收集签名更新包
+        run: python scripts/updater_manifest.py collect --version "$RELEASE_VERSION" --platform "$UPDATE_PLATFORM" --bundle-dir "src-tauri/target/$RUST_TARGET/release/bundle"
+      - name: 安装包结构与启动烟测
+        run: python scripts/smoke_package.py --platform "$RELEASE_PLATFORM"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: updater-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+  draft:
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: updater-*
+          path: release-assets
+          merge-multiple: true
+      - name: 合并更新清单并创建 Release 草稿
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="doc/releases/$RELEASE_VERSION.md"
+          python3 scripts/updater_manifest.py merge --version "$RELEASE_VERSION" --notes "$notes"
+          python3 scripts/finalize_release.py --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"
+          tag="v$RELEASE_VERSION"
+          if gh release view "$tag" --json isDraft >/dev/null 2>&1; then
+            test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+            test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --title "$RELEASE_VERSION" --notes-file "$notes"
+          fi
+          gh release upload "$tag" release-assets/* --clobber
