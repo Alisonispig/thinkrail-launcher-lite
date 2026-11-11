@@ -61,6 +61,6 @@ npm run tauri build -- --debug --bundles app --config '{"bundle":{"createUpdater
 
 源自 [Antigravity Launcher Lite](https://github.com/Alisonispig/antigravity-launcher-lite) 的 1.0.2 源码，复用界面、配置存储、代理握手、平台路径校验和菜单栏代码；删除原客户端的更新恢复流程，改用 ThinkRail 身份、独立应用标识和 Codex 检测目标。应用和托盘图标已重新设计，见 `doc/icon-design.md`。正式打包前运行 `python3 scripts/third_party_notices.py --target <Rust 目标三元组>`，生成随应用附带的第三方声明。
 
-当前以 macOS Apple Silicon 为交付目标，Windows/Linux 适配代码仅沿用基础结构，未实机验证，不承诺对应平台可用。验证结果见 `doc/verification.md`。
+macOS arm64/x64、Windows x64、Linux x64 已完成原生 CI 打包与安装/启动观察。本机 macOS Apple Silicon 另已完整验证应用内下载、签名校验、替换和重启；其余平台的真实设备升级与真实 ThinkRail 对话仍待验收。Linux 应用内更新当前提供 AppImage 格式，deb 用户通过包管理方式更新。详细验证结果见 `doc/verification.md`。
 
 本工具为独立非官方项目，与 ThinkRail 官方无隶属关系。

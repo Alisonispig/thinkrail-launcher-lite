@@ -35,8 +35,10 @@ npm run tauri build -- --bundles app
 ## 维护者发布流程
 
 1. 同步修改 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json` 的版本，并填写 `doc/releases/<版本>.md`。
-2. 完成检查与必要的平台安装升级验收，按项目约定取得用户推送/发布授权。
+2. 完成检查与必要的平台安装升级验收，按项目约定取得用户推送/发布授权。维护者以已授权的 GitHub 账号提前创建同版本的空 Release 草稿，将 `targetCommitish` 固定为构建提交；后续工作流核对该字段后上传附件。草稿不供更新端点发现。
 3. 按 [两个启动器的配套发布](release-policy.md) 同批次准备版本；推送后手动运行 `release.yml` 的「打包发布（含签名更新包）」工作流。流程沿用 Antigravity 的七个安装包/应用 ZIP、架构检查、安装/启动烟测和校验文件，并生成四平台签名更新包与 `latest.json`，上传至同一提交对应的 Release 草稿；任一平台失败不会创建草稿。
 4. 检查草稿的目标提交、版本、说明、四个平台更新包、签名及 `latest.json` 后，再明确发布为正式 Release。草稿不能被用户更新端点发现；不要将只支持部分平台的包标记为最新正式版。
 
 `scripts/updater_manifest.py` 负责收集与合并清单；`python3 -m unittest discover -s scripts -p 'test_*.py'` 验证缺包、缺签名、版本输入和平台合并。
+
+1.0.2 首次发布时，GitHub 拒绝内置集成令牌创建草稿（即使该任务已授予 contents: write）。由维护者账号建立指向已验证提交的草稿后，仅重跑草稿任务即可完成上传；不需要扩大仓库默认令牌权限，也不需要把个人令牌存入工作流。四个平台的已验证构建结果保持不变。此后按上述步骤预先准备草稿。

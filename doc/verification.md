@@ -55,3 +55,16 @@
 - 两仓库 AGENTS.md 已写入配套发布约定，Antigravity 本次仅维护文档，不重新打包或覆盖旧附件。
 - 首轮远程 Windows 测试在测试程序入口以 `0xc0000139` 退出，没有进入用例。排查到 [Tauri 上游的模拟应用测试清单问题](https://github.com/tauri-apps/tauri/issues/13419)，为 MSVC 的所有链接目标显式嵌入与 Tauri 默认一致的 Common Controls v6 清单，避免只有应用 exe 获得清单而 lib 单元测试缺失；不申请额外权限。签名测试内容另通过 `.gitattributes` 保持原始字节，不随 Windows 换行设置改变。
 - 首轮打包已取消，修复后将从同一新提交重新运行整批验证与打包，不混合旧产物。
+
+## 1.0.2 正式发布与升级验收（2026-11-11）
+
+- 正式 Release：<https://github.com/Alisonispig/thinkrail-launcher-lite/releases/tag/v1.0.2>。已公开、设为 Latest，非 prerelease；标签与构建元数据均指向 `81ab82c5b19173b26cc4970d447be5687bc79ed1`。
+- 常规三平台验证运行 `43001492541` 成功。Windows 入口问题修复后，普通验证又发现 Python 默认 CP1252 导致中文读取/输出失败；现显式使用 UTF-8 并修正测试读取。该后续提交 `d67cc61` 只改 CI 与 Python 测试，不改变应用代码；发布工作流原本已设置 PYTHONUTF8。
+- 发布运行 `43000283241` 的四个打包任务全部成功，包含 Rust 测试、Clippy、Python 清单测试、前端 lint/build、依赖许可生成、原生安装包、版本/架构/签名完整性检查、CI 安装与启动烟测。四个平台统一来自 `81ab82c`。
+- 初次及重跑时，集成令牌新建草稿被 GitHub 403 拒绝。维护者账号创建对应草稿并固定构建提交后，仅重跑草稿任务，最终汇总上传成功；未重新打包、未混用其他提交产物，未扩大仓库默认令牌权限。
+- 已公开 16 个附件：七个常规安装包/应用 ZIP、两个 Mac 更新 tar.gz、四份更新签名、latest.json、BUILD-METADATA.json、SHA256SUMS.txt。全部下载后核对资产字节数、GitHub 资产摘要、总 SHA-256、版本及构建提交；四份更新包另通过公钥密码学校验和签名版本绑定检查。两个 Mac ZIP 均通过本机严格签名完整性、应用身份、版本和 arm64/x86_64 架构核对。
+- 原生应用内升级：工作区中的 0.1.1 测试应用经启动页代理检查正式端点，发现 1.0.2；点击「下载安装并重启」后自动下载、替换、重启。界面与 Info.plist 均显示 1.0.2，可执行文件哈希与 CI arm64 正式包一致，签名完整；默认路径、代理和开关正常恢复。事后复核发现升级前后均无落盘配置文件，前述辅助脚本比较的是“文件不存在”状态，不能当作配置文件哈希保留的证据。已有配置文件的真实升级字节保留尚待验收，Rust 配置兼容与持久化测试已通过。
+- 本机已安装入口 `/Applications/ThinkRail Launcher Lite.app` 也已换为经校验的 arm64 正式包并打开，显示 1.0.2。只正常退出两个启动器实例，没有操作 ThinkRail 客户端。原 0.1.0 应用备份在忽略目录 `release-assets/local-before-1.0.2-0kt338n8/ThinkRail Launcher Lite.app`。
+- 平台与真实客户端边界：macOS Apple Silicon 的启动器升级闭环已验收；Intel Mac、Windows、Linux 的真实设备升级仍待验收。未执行真实 ThinkRail 对话，未启动/退出/重启 ThinkRail，未读取其账号数据。Apple Developer ID、公证和 Windows Authenticode 均未宣称完成。
+- Antigravity 保持已公开的 1.0.2，本次维护文档提交 `68fbb96` 的三平台验证运行 `42998737366` 成功；以后两个仓库按同一批次、同版本号准备与发布。
+- 本机验收结果在公开后补入 Release 正文和维护文档；标签与全部附件（包括构建时的 latest.json 说明快照）保持原字节，不覆盖已公开安装包。
