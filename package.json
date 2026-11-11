@@ -1,0 +1,34 @@
+{
+  "name": "thinkrail-launcher-lite",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check": "vue-tsc --noEmit",
+    "lint": "eslint src eslint.config.js"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "eslint": "^9.39.5",
+    "eslint-plugin-vue": "^10.12.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.0.16",
+    "vue-tsc": "^3.3.5"
+  },
+  "description": "轻量级 ThinkRail 桌面代理启动器，仅对客户端进程设置代理，无需 TUN，不修改系统代理。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alisonispig/thinkrail-launcher-lite.git"
+  }
+}
