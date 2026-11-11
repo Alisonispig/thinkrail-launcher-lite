@@ -1,0 +1,26 @@
+name: Windows 导入诊断
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 安装 Rust
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: 构建测试程序
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-run
+      - name: 检查导入并尝试测试
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem src-tauri/target/debug/deps/thinkrail_launcher_lite_lib-*.exe | Select-Object -First 1
+          python scripts/check_windows_imports.py $exe.FullName
+          & $exe.FullName --nocapture
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-test-program
+          path: src-tauri/target/debug/deps/thinkrail_launcher_lite_lib-*.exe
+          retention-days: 3
